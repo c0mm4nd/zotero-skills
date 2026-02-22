@@ -1,0 +1,6 @@
+interface:
+  display_name: "Zotero Collection Export"
+  short_description: "Collection bibliography output"
+  default_prompt: "Use $zotero-better-bibtex to export bibliography data for a Zotero collection."
+policy:
+  allow_implicit_invocation: true

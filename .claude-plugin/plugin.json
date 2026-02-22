@@ -1,0 +1,12 @@
+{
+  "name": "zotero-skills",
+  "version": "0.2.0",
+  "description": "Zotero Local API + Better BibTeX skills (local-only, no cloud).",
+  "author": {
+        "name": "Command M",
+        "email": "me@c0mm4nd.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/c0mm4nd/zotero-skills",
+  "keywords": ["zotero", "bibliography", "better-bibtex", "local-api", "skills"]
+}

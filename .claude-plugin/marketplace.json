@@ -1,0 +1,16 @@
+{
+  "name": "zotero-skills",
+  "description": "Zotero Library Management Skills.",
+  "plugins": [
+    {
+      "name": "zotero-skills",
+      "description": "Zotero Local API + Better BibTeX skills (local-only, no cloud).",
+      "version": "0.2.0",
+      "author": {
+        "name": "Command M",
+        "email": "me@c0mm4nd.com"
+      },
+      "source": "./"
+    }
+  ]
+}

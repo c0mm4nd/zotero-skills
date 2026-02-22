@@ -1,0 +1,59 @@
+{
+  "zotero-better-bibtex": {
+    "expected": [
+      "api_ready",
+      "item_search",
+      "item_citationkey",
+      "item_export_bibtex",
+      "item_export_biblatex",
+      "collection_scope_resolve",
+      "collection_citationkeys",
+      "collection_export_bibtex"
+    ],
+    "passed": [
+      "api_ready",
+      "item_search",
+      "item_citationkey",
+      "item_export_bibtex",
+      "item_export_biblatex",
+      "collection_scope_resolve",
+      "collection_citationkeys",
+      "collection_export_bibtex"
+    ],
+    "failed": [],
+    "covered": 8,
+    "total": 8,
+    "coverage_percent": 100.0
+  },
+  "_summary": {
+    "covered": 16,
+    "total": 16,
+    "coverage_percent": 100.0
+  },
+  "zotero-library": {
+    "expected": [
+      "bootstrap_local_api",
+      "collections_inventory",
+      "collection_items_read",
+      "query_qmode",
+      "query_include_trashed",
+      "incremental_since_versions",
+      "troubleshoot_failure_capture",
+      "troubleshoot_recovery"
+    ],
+    "passed": [
+      "bootstrap_local_api",
+      "collections_inventory",
+      "collection_items_read",
+      "query_qmode",
+      "query_include_trashed",
+      "incremental_since_versions",
+      "troubleshoot_failure_capture",
+      "troubleshoot_recovery"
+    ],
+    "failed": [],
+    "covered": 8,
+    "total": 8,
+    "coverage_percent": 100.0
+  }
+}
