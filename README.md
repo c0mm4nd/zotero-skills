@@ -9,6 +9,25 @@ It is organized into:
 The project focuses on collection-centered literature workflows, plus plugin-powered export/citation workflows.
 It uses local Zotero endpoints only (`127.0.0.1:23119`) and does not use Zotero cloud endpoints.
 
+## Usage Examples
+1. Request: "Initialize collection management for my local Zotero library."
+Expected behavior: Probe local API connectivity, list top collections, and return a usable collection scope.
+
+2. Request: "List papers in collection 'My Reading Queue' and only keep items tagged 'to-read'."
+Expected behavior: Resolve the collection key, query collection items with tag filtering, and return matched item metadata.
+
+3. Request: "Refresh my collection dashboard using incremental sync from the last known version."
+Expected behavior: Read `Last-Modified-Version`, request `since=<version>` deltas, and return changed keys with status.
+
+4. Request: "Export BibTeX for collection 'My Reading Queue'."
+Expected behavior: Resolve collection scope, collect citation keys via Better BibTeX, export BibTeX payload, and report item count.
+
+5. Request: "Export BibLaTeX for item key 'ABCD1234'."
+Expected behavior: Resolve item scope, get citation key for the item, export BibLaTeX payload, and return export status.
+
+6. Request: "Diagnose why one collection request is failing, then recover to a known-good state."
+Expected behavior: Reproduce the failing request, capture status/body for diagnosis, and validate recovery with a healthy endpoint check.
+
 ## Skill Architecture
 - `skills/zotero-library`: core Zotero library operations for collection management.
 - `skills/zotero-better-bibtex`: Better BibTeX JSON-RPC operations for item/collection export and citation keys.
@@ -108,15 +127,6 @@ Latest measured coverage from `tests/functional_coverage_latest.json`:
 Capability IDs under coverage:
 - `zotero-library`: `bootstrap_local_api`, `collections_inventory`, `collection_items_read`, `query_qmode`, `query_include_trashed`, `incremental_since_versions`, `troubleshoot_failure_capture`, `troubleshoot_recovery`
 - `zotero-better-bibtex`: `api_ready`, `item_search`, `item_citationkey`, `item_export_bibtex`, `item_export_biblatex`, `collection_scope_resolve`, `collection_citationkeys`, `collection_export_bibtex`
-
-## Usage Examples
-```text
-Use $zotero-library to initialize collection management for my Zotero library.
-Use $zotero-library to list papers in collection "My Reading Queue" and filter by tag "to-read".
-Use $zotero-library to refresh collection changes using since/version checkpoints.
-Use $zotero-better-bibtex to export BibTeX for collection "My Reading Queue".
-Use $zotero-better-bibtex to export BibLaTeX for item key "ABCD1234".
-```
 
 ## Notes
 - Local API behavior is read-only in this skill suite.
