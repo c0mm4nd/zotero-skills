@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -9,11 +11,17 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Optional, Tuple
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_BASE_URL = "http://127.0.0.1:23119"
+WEB_API_BASE_URL = "https://api.zotero.org"
 LOCAL_HEADERS = {"Zotero-API-Version": "3", "Zotero-Allowed-Request": "1"}
+WEB_API_USER_PLACEHOLDER = "__ZOTERO_WEB_API_USER_ID__"
+WEB_API_KEY_PLACEHOLDER = "__ZOTERO_WEB_API_KEY__"
+WEB_API_USER_ENV_KEYS = ("ZOTERO_WEB_API_USER_ID", "WEB_API_USER_ID", "ZOTERO_USER_ID")
+WEB_API_KEY_ENV_KEYS = ("ZOTERO_WEB_API_KEY", "WEB_API_KEY", "ZOTERO_API_KEY")
 COVERAGE_FILE = REPO_ROOT / "tests" / "functional_coverage_latest.json"
 SKILL_PATHS = {
     "zotero-library": REPO_ROOT / "skills" / "zotero-library" / "SKILL.md",
@@ -21,14 +29,24 @@ SKILL_PATHS = {
 }
 CAPABILITY_MATRIX = {
     "zotero-library": [
-        "bootstrap_local_api",
-        "collections_inventory",
-        "collection_items_read",
-        "query_qmode",
-        "query_include_trashed",
-        "incremental_since_versions",
-        "troubleshoot_failure_capture",
-        "troubleshoot_recovery",
+        "bootstrap_web_api",
+        "web_collections_inventory",
+        "web_collection_items_read",
+        "web_query_qmode",
+        "web_query_include_trashed",
+        "web_incremental_since_versions",
+        "web_collection_create",
+        "web_collection_delete",
+        "web_write_item_create",
+        "web_write_item_update",
+        "web_write_note_create",
+        "web_write_note_update",
+        "web_write_attachment_create",
+        "web_write_note_delete",
+        "web_write_attachment_delete",
+        "web_write_item_delete",
+        "web_troubleshoot_failure_capture",
+        "web_troubleshoot_recovery",
     ],
     "zotero-better-bibtex": [
         "api_ready",
@@ -41,6 +59,74 @@ CAPABILITY_MATRIX = {
         "collection_export_bibtex",
     ],
 }
+
+
+def _load_dotenv_into_environ(dotenv_path: Path) -> None:
+    if not dotenv_path.exists():
+        return
+    for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv_into_environ(REPO_ROOT / ".env")
+
+
+def _resolve_web_api_user_id_from_key(api_key: str) -> str:
+    req = urllib.request.Request(
+        f"{WEB_API_BASE_URL}/keys/current",
+        headers={"Zotero-API-Version": "3", "Zotero-API-Key": api_key},
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=10.0) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    user_id = str(payload.get("userID", "")).strip()
+    return user_id
+
+
+def _read_web_api_credentials_from_skill(skill_path: Path) -> Optional[Tuple[str, str]]:
+    text = skill_path.read_text(encoding="utf-8")
+    user_match = re.search(r"WEB_API_USER_ID:\s*`([^`]+)`", text)
+    key_match = re.search(r"WEB_API_KEY:\s*`([^`]+)`", text)
+    if user_match and key_match:
+        user_id = user_match.group(1).strip()
+        api_key = key_match.group(1).strip()
+        if user_id and api_key and user_id != WEB_API_USER_PLACEHOLDER and api_key != WEB_API_KEY_PLACEHOLDER:
+            return user_id, api_key
+
+    env_user_id = ""
+    env_api_key = ""
+    for key in WEB_API_USER_ENV_KEYS:
+        if os.environ.get(key):
+            env_user_id = os.environ[key].strip()
+            break
+    for key in WEB_API_KEY_ENV_KEYS:
+        if os.environ.get(key):
+            env_api_key = os.environ[key].strip()
+            break
+
+    if env_api_key and not env_user_id:
+        try:
+            env_user_id = _resolve_web_api_user_id_from_key(env_api_key)
+        except Exception:
+            env_user_id = ""
+
+    if env_user_id and env_api_key:
+        return env_user_id, env_api_key
+    return None
 
 
 def _sha256_bytes(raw: bytes) -> str:
@@ -82,7 +168,7 @@ def _wait_for_local_api_ready(timeout_sec: float = 30.0) -> None:
     )
 
 
-def _run_codex_with_schema(prompt: str, schema: dict) -> dict:
+def _run_codex_with_schema(prompt: str, schema: dict, timeout_sec: int = 480) -> dict:
     with tempfile.TemporaryDirectory() as td:
         tmpdir = Path(td)
         schema_path = tmpdir / "schema.json"
@@ -104,7 +190,7 @@ def _run_codex_with_schema(prompt: str, schema: dict) -> dict:
             str(out_path),
             prompt,
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=480, check=False)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec, check=False)
         if proc.returncode != 0:
             stderr_tail = "\n".join((proc.stderr or "").splitlines()[-40:])
             stdout_tail = "\n".join((proc.stdout or "").splitlines()[-40:])
@@ -161,10 +247,17 @@ class CodexCollectionServiceLiveTests(unittest.TestCase):
             raise unittest.SkipTest("codex binary not found in PATH")
         if COVERAGE_FILE.exists():
             COVERAGE_FILE.unlink()
-        _wait_for_local_api_ready(timeout_sec=30.0)
 
     def test_zotero_library_service_flow(self) -> None:
         skill_name = "zotero-library"
+        credentials = _read_web_api_credentials_from_skill(SKILL_PATHS[skill_name])
+        if not credentials:
+            raise unittest.SkipTest(
+                "zotero-library Web API credentials are missing. Configure SKILL.md "
+                "(WEB_API_USER_ID / WEB_API_KEY) or set .env vars "
+                "(ZOTERO_WEB_API_USER_ID or WEB_API_USER_ID, and ZOTERO_WEB_API_KEY or WEB_API_KEY)."
+            )
+        web_api_user_id, _ = credentials
 
         schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -172,7 +265,7 @@ class CodexCollectionServiceLiveTests(unittest.TestCase):
             "properties": {
                 "skill_name": {"type": "string"},
                 "skill_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-                "bootstrap_status": {"type": "integer"},
+                "web_bootstrap_status": {"type": "integer"},
                 "collections_status": {"type": "integer"},
                 "collection_count": {"type": "integer", "minimum": 0},
                 "sample_collection_key": {"type": "string"},
@@ -183,11 +276,40 @@ class CodexCollectionServiceLiveTests(unittest.TestCase):
                 "delta_status": {"type": "integer"},
                 "bad_status": {"type": "integer"},
                 "recovery_status": {"type": "integer"},
+                "collections_write_seed_version": {"type": "string", "pattern": "^[0-9]+$"},
+                "write_collection_status": {"type": "integer"},
+                "created_collection_key": {"type": "string"},
+                "created_collection_status": {"type": "integer"},
+                "delete_collection_status": {"type": "integer"},
+                "deleted_collection_check_status": {"type": "integer"},
+                "write_seed_version": {"type": "string", "pattern": "^[0-9]+$"},
+                "write_item_status": {"type": "integer"},
+                "created_item_search_status": {"type": "integer"},
+                "created_item_hits": {"type": "integer", "minimum": 0},
+                "created_item_key": {"type": "string"},
+                "created_item_status": {"type": "integer"},
+                "created_item_version": {"type": "string", "pattern": "^[0-9]+$"},
+                "update_item_status": {"type": "integer"},
+                "write_note_status": {"type": "integer"},
+                "created_note_key": {"type": "string"},
+                "update_note_status": {"type": "integer"},
+                "write_attachment_status": {"type": "integer"},
+                "created_attachment_key": {"type": "string"},
+                "children_status": {"type": "integer"},
+                "created_note_count": {"type": "integer", "minimum": 0},
+                "created_attachment_count": {"type": "integer", "minimum": 0},
+                "updated_note_visible": {"type": "boolean"},
+                "delete_note_status": {"type": "integer"},
+                "deleted_note_check_status": {"type": "integer"},
+                "delete_attachment_status": {"type": "integer"},
+                "deleted_attachment_check_status": {"type": "integer"},
+                "delete_item_status": {"type": "integer"},
+                "deleted_item_check_status": {"type": "integer"},
             },
             "required": [
                 "skill_name",
                 "skill_sha256",
-                "bootstrap_status",
+                "web_bootstrap_status",
                 "collections_status",
                 "collection_count",
                 "sample_collection_key",
@@ -198,36 +320,124 @@ class CodexCollectionServiceLiveTests(unittest.TestCase):
                 "delta_status",
                 "bad_status",
                 "recovery_status",
+                "collections_write_seed_version",
+                "write_collection_status",
+                "created_collection_key",
+                "created_collection_status",
+                "delete_collection_status",
+                "deleted_collection_check_status",
+                "write_seed_version",
+                "write_item_status",
+                "created_item_search_status",
+                "created_item_hits",
+                "created_item_key",
+                "created_item_status",
+                "created_item_version",
+                "update_item_status",
+                "write_note_status",
+                "created_note_key",
+                "update_note_status",
+                "write_attachment_status",
+                "created_attachment_key",
+                "children_status",
+                "created_note_count",
+                "created_attachment_count",
+                "updated_note_visible",
+                "delete_note_status",
+                "deleted_note_check_status",
+                "delete_attachment_status",
+                "deleted_attachment_check_status",
+                "delete_item_status",
+                "deleted_item_check_status",
             ],
             "additionalProperties": False,
         }
 
         prompt = (
-            "Read skills/zotero-library/SKILL.md and run a full validation flow. "
+            "Read skills/zotero-library/SKILL.md and run a full Zotero Web API CRUD validation flow. "
             "Output JSON only, matching the schema exactly: "
-            "1) Bootstrap: GET /api/users/0/collections?limit=1 and return bootstrap_status. "
-            "2) Inventory: GET /api/users/0/collections/top?limit=10&format=json&include=data and return collections_status and collection_count. "
-            "3) Use the first collection key as sample_collection_key, then request /api/users/0/collections/<key>/items?limit=3&format=json&include=data and return sample_items_status. "
-            "4) Query shaping: request /api/users/0/items/top?limit=3&q=learning&qmode=everything&format=json&include=data and return query_status. "
-            "5) Include trashed: request /api/users/0/items/top?limit=3&includeTrashed=1&format=json&include=data and return include_trashed_status. "
-            "6) Incremental: read Last-Modified-Version from /api/users/0/collections?limit=1 as seed_version, then request /api/users/0/collections?since=<seed_version>&format=versions and return delta_status. "
-            "7) Troubleshooting: request /api/users/0/collections/THISDOESNOTEXIST and return bad_status, then request /api/users/0/collections/top?limit=1&format=json and return recovery_status. "
-            "8) Every local API request must include Zotero-API-Version:3 and Zotero-Allowed-Request:1. "
-            "9) Return SKILL.md sha256."
+            f"Use base URL {WEB_API_BASE_URL} and user id {web_api_user_id}. "
+            "Use credentials from skill; if placeholders are present, use environment variables "
+            "ZOTERO_WEB_API_USER_ID and ZOTERO_WEB_API_KEY. Do not print or return the key. "
+            "Every request must include headers Zotero-API-Version:3 and Zotero-API-Key:<from skill>. "
+            "1) Bootstrap: GET /users/<id>/collections?limit=1 and return web_bootstrap_status. "
+            "2) Inventory: GET /users/<id>/collections/top?limit=10&format=json&include=data and return collections_status and collection_count. "
+            "3) Use first collection key as sample_collection_key, then GET /users/<id>/collections/<key>/items?limit=3&format=json&include=data and return sample_items_status. "
+            "4) Query shaping: GET /users/<id>/items/top?limit=3&q=learning&qmode=everything&format=json&include=data and return query_status. "
+            "5) Include trashed: GET /users/<id>/items/top?limit=3&includeTrashed=1&format=json&include=data and return include_trashed_status. "
+            "6) Incremental: read Last-Modified-Version from GET /users/<id>/collections?limit=1 as seed_version; GET /users/<id>/collections?since=<seed_version>&format=versions and return delta_status. "
+            "7) Troubleshooting: GET /users/<id>/collections/THISDOESNOTEXIST return bad_status; then GET /users/<id>/collections/top?limit=1&format=json return recovery_status. "
+            "8) Collection create seed: GET /users/<id>/collections?limit=1 and read Last-Modified-Version as collections_write_seed_version. "
+            "9) Create collection: with run_id=timestamp string, POST /users/<id>/collections with If-Unmodified-Since-Version:collections_write_seed_version and body "
+            "[{name:'Codex Web Collection '+run_id}] and return write_collection_status and created_collection_key (or empty string). "
+            "10) Verify created collection: if created_collection_key non-empty, GET /users/<id>/collections/<created_collection_key>?format=json&include=data return created_collection_status; else created_collection_status=0. "
+            "11) Delete created collection: if created_collection_key non-empty, refresh Last-Modified-Version from GET /users/<id>/collections?limit=1 and DELETE /users/<id>/collections/<created_collection_key> with If-Unmodified-Since-Version; return delete_collection_status. "
+            "If created_collection_key empty, return delete_collection_status=0. "
+            "12) Deleted collection check: if created_collection_key non-empty, GET /users/<id>/collections/<created_collection_key>?format=json and return deleted_collection_check_status (expect 404); else 0. "
+            "13) Write seed: GET /users/<id>/items?limit=1 and read Last-Modified-Version as write_seed_version. "
+            "14) Create item: with run_id=timestamp string, POST /users/<id>/items with If-Unmodified-Since-Version:write_seed_version and body "
+            "[{itemType:'webpage',title:'Codex Web Library Live '+run_id,url:'https://example.com/codex-web-library-live/'+run_id,tags:[{tag:'codex-web-write'}]}]. "
+            "Return write_item_status and created_item_key from successful write result (or empty string). "
+            "15) Verify created item: GET /users/<id>/items/top?limit=5&q=<exact title>&qmode=titleCreatorYear&format=json&include=data and return created_item_search_status, created_item_hits. "
+            "Then GET /users/<id>/items/<created_item_key>?format=json&include=data and return created_item_status and created_item_version. "
+            "16) Update created item: PATCH /users/<id>/items/<created_item_key> with If-Unmodified-Since-Version:created_item_version and body "
+            "{title:'Codex Web Library Live '+run_id+' Updated',tags:[{tag:'codex-web-write-updated'}]} and return update_item_status. "
+            "17) Create note: GET /users/<id>/items?limit=1 to refresh library version, then POST /users/<id>/items with If-Unmodified-Since-Version and body "
+            "[{itemType:'note',parentItem:created_item_key,note:'<p>Codex Web Note A '+run_id+'</p>'}] and return write_note_status and created_note_key. "
+            "18) Update note: GET /users/<id>/items/<created_note_key>?format=json&include=data to get note version; "
+            "PATCH /users/<id>/items/<created_note_key> with If-Unmodified-Since-Version:<note version> and body "
+            "{note:'<p>Codex Web Note B '+run_id+'</p>'} and return update_note_status. "
+            "19) Create attachment child: GET /users/<id>/items?limit=1 for library version; POST /users/<id>/items with If-Unmodified-Since-Version and body "
+            "[{itemType:'attachment',parentItem:created_item_key,linkMode:'linked_url',title:'Codex Web Attachment '+run_id,url:'https://example.com/codex-web-attachment/'+run_id,contentType:'text/html'}] "
+            "and return write_attachment_status and created_attachment_key. "
+            "20) Verify children: GET /users/<id>/items/<created_item_key>/children?format=json&include=data and return children_status, created_note_count, created_attachment_count, updated_note_visible "
+            "(true if any note child contains 'Codex Web Note B'). "
+            "21) Delete note: if created_note_key non-empty, refresh Last-Modified-Version from GET /users/<id>/items?limit=1 and DELETE /users/<id>/items/<created_note_key> with If-Unmodified-Since-Version. "
+            "Return delete_note_status; then GET /users/<id>/items/<created_note_key>?format=json and return deleted_note_check_status. If key empty, both are 0. "
+            "22) Delete attachment: if created_attachment_key non-empty, refresh Last-Modified-Version from GET /users/<id>/items?limit=1 and DELETE /users/<id>/items/<created_attachment_key> with If-Unmodified-Since-Version. "
+            "Return delete_attachment_status; then GET /users/<id>/items/<created_attachment_key>?format=json and return deleted_attachment_check_status. If key empty, both are 0. "
+            "23) Delete item: if created_item_key non-empty, refresh Last-Modified-Version from GET /users/<id>/items?limit=1 and DELETE /users/<id>/items/<created_item_key> with If-Unmodified-Since-Version. "
+            "Return delete_item_status; then GET /users/<id>/items/<created_item_key>?format=json and return deleted_item_check_status. If key empty, both are 0. "
+            "24) Return SKILL.md sha256."
         )
 
-        result = _run_codex_with_schema(prompt, schema)
+        result = _run_codex_with_schema(prompt, schema, timeout_sec=1200)
         _assert_skill_identity(self, result, skill_name)
 
         capability_pass = {
-            "bootstrap_local_api": result["bootstrap_status"] == 200,
-            "collections_inventory": result["collections_status"] == 200 and result["collection_count"] > 0,
-            "collection_items_read": bool(result["sample_collection_key"]) and result["sample_items_status"] == 200,
-            "query_qmode": result["query_status"] == 200,
-            "query_include_trashed": result["include_trashed_status"] == 200,
-            "incremental_since_versions": result["delta_status"] == 200,
-            "troubleshoot_failure_capture": result["bad_status"] != 200,
-            "troubleshoot_recovery": result["recovery_status"] == 200,
+            "bootstrap_web_api": result["web_bootstrap_status"] == 200,
+            "web_collections_inventory": result["collections_status"] == 200 and result["collection_count"] > 0,
+            "web_collection_items_read": bool(result["sample_collection_key"]) and result["sample_items_status"] == 200,
+            "web_query_qmode": result["query_status"] == 200,
+            "web_query_include_trashed": result["include_trashed_status"] == 200,
+            "web_incremental_since_versions": result["delta_status"] == 200,
+            "web_collection_create": (
+                result["write_collection_status"] in (200, 201)
+                and bool(result["created_collection_key"])
+                and result["created_collection_status"] == 200
+            ),
+            "web_collection_delete": result["delete_collection_status"] in (200, 204) and result["deleted_collection_check_status"] == 404,
+            "web_write_item_create": (
+                result["write_item_status"] in (200, 201)
+                and result["created_item_search_status"] == 200
+                and result["created_item_hits"] > 0
+                and bool(result["created_item_key"])
+                and result["created_item_status"] == 200
+            ),
+            "web_write_item_update": result["update_item_status"] in (200, 204),
+            "web_write_note_create": result["write_note_status"] in (200, 201) and bool(result["created_note_key"]),
+            "web_write_note_update": result["update_note_status"] in (200, 204) and result["updated_note_visible"],
+            "web_write_attachment_create": (
+                result["write_attachment_status"] in (200, 201)
+                and bool(result["created_attachment_key"])
+                and result["children_status"] == 200
+                and result["created_attachment_count"] > 0
+            ),
+            "web_write_note_delete": result["delete_note_status"] in (200, 204) and result["deleted_note_check_status"] == 404,
+            "web_write_attachment_delete": result["delete_attachment_status"] in (200, 204) and result["deleted_attachment_check_status"] == 404,
+            "web_write_item_delete": result["delete_item_status"] in (200, 204) and result["deleted_item_check_status"] == 404,
+            "web_troubleshoot_failure_capture": result["bad_status"] != 200,
+            "web_troubleshoot_recovery": result["recovery_status"] == 200,
         }
         _record_coverage(skill_name, capability_pass)
 
@@ -236,6 +446,7 @@ class CodexCollectionServiceLiveTests(unittest.TestCase):
 
     def test_zotero_better_bibtex_plugin_flow(self) -> None:
         skill_name = "zotero-better-bibtex"
+        _wait_for_local_api_ready(timeout_sec=30.0)
 
         schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",

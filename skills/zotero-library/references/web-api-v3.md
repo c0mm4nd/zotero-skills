@@ -1,7 +1,7 @@
-# Web API v3 essentials (Local API uses these semantics)
+# Web API v3 essentials
 
 ## Base patterns
-- Library prefix: `/api/users/<userID>` or `/api/groups/<groupID>` (Local API uses `users/0`).
+- Library prefix on Web API host: `/users/<userID>` or `/groups/<groupID>`.
 - Common resources:
   - Collections: `/collections`, `/collections/top`, `/collections/<collectionKey>`, `/collections/<collectionKey>/collections`
   - Items: `/items`, `/items/top`, `/items/trash`, `/items/<itemKey>`, `/items/<itemKey>/children`, `/collections/<collectionKey>/items`
@@ -24,9 +24,20 @@
 
 ## Versioning and incremental reads
 - `Zotero-API-Version: 3` (or `v=3` query param).
+- Auth header for private libraries: `Zotero-API-Key: <key>`.
 - `Last-Modified-Version` response header indicates library/object version.
 - `since=<version>` returns objects modified after a version.
 - `format=versions` returns a map of keys to versions.
+
+## Writes
+- Create collections: `POST <prefix>/collections` with JSON array body.
+- Update collections: `PATCH <prefix>/collections/<collectionKey>` with JSON object body.
+- Delete collections: `DELETE <prefix>/collections/<collectionKey>`.
+- Create items: `POST <prefix>/items` with JSON array body.
+- Update items: `PATCH <prefix>/items/<itemKey>` with JSON object body.
+- Delete items: `DELETE <prefix>/items/<itemKey>`.
+- For conflict-safe writes, include `If-Unmodified-Since-Version`.
+- Precondition failures use HTTP `412` or `428`.
 
 ## Full-text
 - `GET <userOrGroupPrefix>/fulltext?since=<version>`

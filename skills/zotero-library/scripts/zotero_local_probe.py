@@ -26,15 +26,12 @@ def main():
     parser.add_argument("--base", default="http://127.0.0.1:23119", help="Base URL (scheme://host:port)")
     parser.add_argument("--timeout", type=float, default=3.0, help="Request timeout in seconds")
     parser.add_argument("--no-allow-header", action="store_true", help="Do not send Zotero-Allowed-Request header")
-    parser.add_argument("--connector-header", action="store_true", help="Send X-Zotero-Connector-API-Version header")
     parser.add_argument("--skip-bbt", action="store_true", help="Skip Better BibTeX probe")
     args = parser.parse_args()
 
     headers = {"Zotero-API-Version": "3"}
     if not args.no_allow_header:
         headers["Zotero-Allowed-Request"] = "1"
-    if args.connector_header:
-        headers["X-Zotero-Connector-API-Version"] = "2"
 
     local_url = f"{args.base}/api/users/0/items?limit=1"
     print(f"Local API: {local_url}")

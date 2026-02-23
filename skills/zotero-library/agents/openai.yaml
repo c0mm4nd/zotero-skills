@@ -1,6 +1,6 @@
 interface:
   display_name: "Zotero Library Service"
-  short_description: "Collection-first paper management"
-  default_prompt: "Use $zotero-library to manage papers in Zotero collections."
+  short_description: "Web API collection and item management"
+  default_prompt: "Use zotero-library to manage Zotero collections and items through Zotero Web API."
 policy:
   allow_implicit_invocation: true
