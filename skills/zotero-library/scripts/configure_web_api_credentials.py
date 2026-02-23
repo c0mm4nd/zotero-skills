@@ -23,7 +23,10 @@ def _mask_key(key: str) -> str:
 
 
 def _replace_once(text: str, pattern: re.Pattern[str], value: str, label: str) -> str:
-    updated, count = pattern.subn(rf"\1{value}\3", text, count=1)
+    def repl(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{value}{match.group(3)}"
+
+    updated, count = pattern.subn(repl, text, count=1)
     if count != 1:
         raise RuntimeError(f"Failed to locate {label} marker in SKILL.md")
     return updated
