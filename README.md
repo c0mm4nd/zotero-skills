@@ -52,9 +52,25 @@ Expected behavior: Use Better BibTeX JSON-RPC and return export result/count.
 ```text
 /plugin install zotero-skills@zotero-skills
 ```
-3. Configure `zotero-library` credentials in installed `SKILL.md`:
-- `WEB_API_USER_ID`
-- `WEB_API_KEY`
+3. Locate installed `zotero-library/SKILL.md` (macOS/Linux):
+```bash
+find "$HOME/.claude" -type f -path "*/zotero-library/SKILL.md" 2>/dev/null
+```
+4. Edit that file and replace placeholders:
+- `WEB_API_USER_ID: __ZOTERO_WEB_API_USER_ID__`
+- `WEB_API_KEY: __ZOTERO_WEB_API_KEY__`
+5. Example helper command (if this repo is cloned locally):
+```bash
+python3 skills/zotero-library/scripts/configure_web_api_credentials.py --skill-path "<FOUND_SKILL_PATH>"
+```
+6. Restart Claude Code so it reloads the updated skill.
+
+How to get `WEB_API_USER_ID` from your key:
+```bash
+curl -sS -H "Zotero-API-Version: 3" -H "Zotero-API-Key: <WEB_API_KEY>" \
+  "https://api.zotero.org/keys/current"
+```
+Read `userID` from the JSON response and use it as `WEB_API_USER_ID`.
 
 ### Codex
 Quick install:
