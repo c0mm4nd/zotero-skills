@@ -1,22 +1,36 @@
 # Install
-1. Clone the repo.
-2. Link the skills folder into your Codex skills directory:
+1. Clone/update the repo in a fixed location and link the skills folder into your Codex skills directory:
 
 ```bash
-ln -s "$(pwd)/zotero-skills/skills" "$HOME/.agents/skills/zotero-skills"
+mkdir -p "$HOME/.agents/repos" "$HOME/.agents/skills"
+if [ -d "$HOME/.agents/repos/zotero-skills/.git" ]; then
+  git -C "$HOME/.agents/repos/zotero-skills" pull --ff-only
+else
+  git clone https://github.com/c0mm4nd/zotero-skills "$HOME/.agents/repos/zotero-skills"
+fi
+rm -f "$HOME/.agents/skills/zotero-skills"
+ln -s "$HOME/.agents/repos/zotero-skills/skills" "$HOME/.agents/skills/zotero-skills"
 ```
 
-3. Configure Zotero Web API credentials (stored in plaintext in `skills/zotero-library/SKILL.md`):
+2. Configure Zotero Web API credentials (stored in plaintext in `skills/zotero-library/SKILL.md`):
 
 ```bash
-python3 zotero-skills/skills/zotero-library/scripts/configure_web_api_credentials.py
+python3 "$HOME/.agents/repos/zotero-skills/skills/zotero-library/scripts/configure_web_api_credentials.py"
 ```
 
-4. Restart Codex so it re-scans skills.
+3. Restart Codex so it re-scans skills.
 
 # Uninstall
 1. Remove the symlink:
 
 ```bash
-rm "$HOME/.agents/skills/zotero-skills"
+rm -f "$HOME/.agents/skills/zotero-skills"
 ```
+
+2. Optional: remove the local clone:
+
+```bash
+rm -rf "$HOME/.agents/repos/zotero-skills"
+```
+
+3. Restart Codex so it re-scans skills.

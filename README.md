@@ -79,10 +79,24 @@ Quick install:
 
 Manual install:
 ```bash
-git clone https://github.com/c0mm4nd/zotero-skills
-ln -s "$(pwd)/zotero-skills/skills" "$HOME/.agents/skills/zotero-skills"
-python3 zotero-skills/skills/zotero-library/scripts/configure_web_api_credentials.py
+mkdir -p "$HOME/.agents/repos" "$HOME/.agents/skills"
+if [ -d "$HOME/.agents/repos/zotero-skills/.git" ]; then
+  git -C "$HOME/.agents/repos/zotero-skills" pull --ff-only
+else
+  git clone https://github.com/c0mm4nd/zotero-skills "$HOME/.agents/repos/zotero-skills"
+fi
+rm -f "$HOME/.agents/skills/zotero-skills"
+ln -s "$HOME/.agents/repos/zotero-skills/skills" "$HOME/.agents/skills/zotero-skills"
+python3 "$HOME/.agents/repos/zotero-skills/skills/zotero-library/scripts/configure_web_api_credentials.py"
 ```
+
+Uninstall:
+```bash
+rm -f "$HOME/.agents/skills/zotero-skills"
+# Optional: remove local clone as well
+rm -rf "$HOME/.agents/repos/zotero-skills"
+```
+Then restart Codex so it re-scans skills.
 
 The configuration step prompts for Web API user id/key and writes them in plaintext to:
 - `skills/zotero-library/SKILL.md`
