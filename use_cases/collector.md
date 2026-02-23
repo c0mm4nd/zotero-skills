@@ -1,0 +1,3 @@
+请完成下面任务，并且把你的所有操作过程和结果都记录在同文件夹下的collector_log.md中：
+
+请帮我收集所有Agentic Commerce（自主的人工智能（AI） 代理代表用户或组织独立执行购买和支付流程）的相关文献，并以合适的格式通过zotero-library存入Zotero中的同名新collection中。
